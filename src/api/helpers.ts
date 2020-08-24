@@ -334,6 +334,21 @@ export const sortByLiqDepth = (a: LiqDepth, b: LiqDepth) => {
   return b.liqDepth - a.liqDepth;
 };
 
+export interface RegisteredContracts {
+  BancorNetwork: string;
+  BancorConverterRegistry: string;
+}
+
+export interface ConverterAndAnchor {
+  converterAddress: string;
+  anchorAddress: string;
+}
+
+export interface AnchorSet {
+  bareMinimumAnchorAddresses: string[];
+  anchorAndConverters: ConverterAndAnchor[];
+}
+
 export const matchReserveFeed = (reserveFeed: ReserveFeed) => (
   dict: DictionaryItem
 ) =>

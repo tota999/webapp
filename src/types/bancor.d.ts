@@ -289,6 +289,13 @@ interface PoolTokenPosition {
   }[];
 }
 
+export interface EthNetworkVariables {
+  contractRegistry: string;
+  bntToken: string;
+  ethToken: string;
+  multiCall: string;
+}
+
 export interface ReserveFeed {
   liqDepth: number;
   poolId: string;

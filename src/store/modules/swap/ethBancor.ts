@@ -23,7 +23,8 @@ import {
   ConvertReturn,
   UserPoolBalances,
   ReserveFeed,
-  PoolTokenPosition
+  PoolTokenPosition,
+  EthNetworkVariables
 } from "@/types/bancor";
 import { ethBancorApi } from "@/api/bancorApiWrapper";
 import {
@@ -49,7 +50,10 @@ import {
   sortAlongSide,
   RelayWithReserveBalances,
   sortByLiqDepth,
-  matchReserveFeed
+  RegisteredContracts,
+  ConverterAndAnchor,
+  matchReserveFeed,
+  AnchorSet
 } from "@/api/helpers";
 import { ContractSendMethod } from "web3-eth-contract";
 import {
@@ -72,7 +76,7 @@ import Decimal from "decimal.js";
 import axios, { AxiosResponse } from "axios";
 import { vxm } from "@/store";
 import wait from "waait";
-import { uniqWith, differenceWith, zip, partition } from "lodash";
+import { uniqWith, differenceWith, zip, partition, isError } from "lodash";
 import {
   buildNetworkContract,
   buildRegistryContract,
@@ -90,6 +94,7 @@ import {
   TokenSymbol
 } from "@/api/eth/helpers";
 import { ethBancorApiDictionary } from "@/api/eth/bancorApiRelayDictionary";
+import { db } from "@/api/PoolDb";
 import { getSmartTokenHistory, fetchSmartTokens } from "@/api/eth/zumZoom";
 import { sortByNetworkTokens } from "@/api/sortByNetworkTokens";
 import { findNewPath } from "@/api/eos/eosBancorCalc";
@@ -98,6 +103,39 @@ import BigNumber from "bignumber.js";
 import { knownVersions } from "@/api/eth/knownConverterVersions";
 import { openDB, DBSchema } from "idb/with-async-ittr.js";
 import { MultiCall, ShapeWithLabel, DataTypes } from "eth-multicall";
+
+// @ts-ignore
+const timeNowMs = () => parseInt(new Date() / 1);
+
+const replayIfDifferent = async <T>(
+  local: () => Promise<T>,
+  remote: () => Promise<T>,
+  remoteResolved: (
+    localReturn: T | Error,
+    remoteReturn: T,
+    promiseTime: number
+  ) => Promise<void>
+): Promise<T> => {
+  try {
+    const localRes = await local();
+    (async () => {
+      const time = timeNowMs();
+      const remoteRes = await remote();
+      console.log("after", timeNowMs());
+      const timeEnd = timeNowMs();
+      remoteResolved(localRes, remoteRes, timeEnd - time);
+    })();
+    console.log("before returning at", timeNowMs());
+    return localRes;
+  } catch (e) {
+    console.warn("REPLAYTHREW");
+    const time = timeNowMs();
+    const remoteRes = await remote();
+    const timeEnd = timeNowMs();
+    remoteResolved(new Error(e.message), remoteRes, timeEnd - time);
+    return remoteRes;
+  }
+};
 
 const compareRelayByReserves = (a: Relay, b: Relay) =>
   a.reserves.every(reserve =>
@@ -418,11 +456,6 @@ interface AbiCentralPoolToken extends RawAbiCentralPoolToken {
   contract: string;
 }
 
-interface ConverterAndAnchor {
-  converterAddress: string;
-  anchorAddress: string;
-}
-
 const networkTokenAddresses = [
   "0x309627af60F0926daa6041B8279484312f2bf060",
   "0x1F573D6Fb3F13d689FF844B4cE37794d79a7FF1C"
@@ -483,13 +516,6 @@ const tokensInRelay = (relay: Relay): Token[] => [
   ...reserveTokensInRelay(relay),
   ...iouTokensInRelay(relay)
 ];
-
-interface EthNetworkVariables {
-  contractRegistry: string;
-  bntToken: string;
-  ethToken: string;
-  multiCall: string;
-}
 
 const getNetworkVariables = (ethNetwork: EthNetworks): EthNetworkVariables => {
   switch (ethNetwork) {
@@ -762,10 +788,6 @@ const reserveBalanceShape = (contractAddress: string, reserves: string[]) => {
     reserveTwo: contract.methods.getConnectorBalance(reserveTwo)
   };
 };
-interface RegisteredContracts {
-  BancorNetwork: string;
-  BancorConverterRegistry: string;
-}
 
 const removeLeadingZeros = (hexString: string) => {
   console.log(hexString, "was received on remove leading zeros");
@@ -2852,7 +2874,9 @@ export class EthBancorModule
     }
   }
 
-  @action async fetchContractAddresses(contractRegistry: string) {
+  @action async fetchContractAddresses(
+    contractRegistry: string
+  ): Promise<RegisteredContracts> {
     const hardCodedBytes: RegisteredContracts = {
       BancorNetwork: asciiToHex("BancorNetwork"),
       BancorConverterRegistry: asciiToHex("BancorConverterRegistry")
@@ -3646,7 +3670,22 @@ export class EthBancorModule
     }
   }
 
+  @action async getAnchors({
+    converterRegistry
+  }: {
+    converterRegistry: string;
+  }): Promise<ConverterAndAnchor[]> {
+    const registeredAnchorAddresses = await this.fetchAnchorAddresses(
+      converterRegistry
+    );
+
+    const anchorAndConverters = await this.add(registeredAnchorAddresses);
+    return anchorAndConverters;
+  }
+
   @action async init(params?: ModuleParam) {
+    console.time("cache");
+
     console.log(params, "was init param on eth");
     console.time("ethResolved");
     console.time("timeToGetToInitialBulk");
@@ -3657,17 +3696,12 @@ export class EthBancorModule
 
     BigNumber.config({ EXPONENTIAL_AT: 256 });
 
-    // const bigBnt = new BigNumber(toWei("100000"));
-    // const bntBalance = new BigNumber("3917675891686726629443620");
-    // const percent = bigBnt.div(bntBalance).toString();
-    // console.log(percent, "is the percent");
-
+    console.time("web3Version");
     const web3NetworkVersion = await web3.eth.getChainId();
+    console.timeEnd("web3Version");
     const currentNetwork: EthNetworks = web3NetworkVersion;
-    console.log(currentNetwork, "is the current network");
     this.setNetwork(currentNetwork);
     const networkVariables = getNetworkVariables(currentNetwork);
-
     const testnetActive = currentNetwork == EthNetworks.Ropsten;
 
     if (
@@ -3700,38 +3734,71 @@ export class EthBancorModule
       this.fetchUsdPriceOfBnt();
 
       console.time("FirstPromise");
-      let [contractAddresses] = await Promise.all([
-        this.fetchContractAddresses(networkVariables.contractRegistry)
-      ]);
-      console.timeEnd("FirstPromise");
+      const contractAddresses = await replayIfDifferent(
+        async () => db.getBancorContractAddresses(currentNetwork),
+        async () =>
+          this.fetchContractAddresses(networkVariables.contractRegistry),
+        async (a, b, time) => {
+          const res = await db.setBancorContractAddresses(currentNetwork, b);
+          console.log(time, "was time saved!");
+        }
+      );
 
+      console.log(contractAddresses, "is the contract address");
+
+      console.timeEnd("FirstPromise");
       console.time("SecondPromise");
-      const registeredAnchorAddresses = await this.fetchAnchorAddresses(
-        contractAddresses.BancorConverterRegistry
+
+      const anchorAndConverters = await replayIfDifferent(
+        async () => {
+          return db.getAnchorsAndConverters(currentNetwork);
+        },
+        async () => {
+          return this.getAnchors({
+            converterRegistry: contractAddresses.BancorConverterRegistry
+          });
+        },
+        async (local, remote, time) => {
+          if (isError(local)) {
+            await db.setAnchorsAndConverters(remote);
+          } else {
+            const difference = differenceWith(
+              remote,
+              local,
+              compareAnchorAndConverter
+            );
+            if (difference.length == 0) {
+              console.log("Saved", time, "milliseconds!");
+            } else {
+              console.log(
+                difference,
+                "is known as the difference and needs to be replayed!"
+              );
+            }
+          }
+        }
       );
       console.timeEnd("SecondPromise");
 
-      this.setRegisteredAnchorAddresses(registeredAnchorAddresses);
+      console.timeEnd("cache");
+      console.time("bareMinimum");
+      const bareMinimumAnchorAddresses = await this.bareMinimumPools({
+        params,
+        networkContractAddress: contractAddresses.BancorConverterRegistry,
+        anchorAddressess: anchorAndConverters.map(x => x.anchorAddress),
+        ...(bancorApiTokens.length > 0 && { tokenPrices: bancorApiTokens })
+      });
+      console.timeEnd("bareMinimum");
 
-      console.time("ThirdPromise");
-      const [
-        anchorAndConvertersMatched,
-        bareMinimumAnchorAddresses
-      ] = await Promise.all([
-        this.add(registeredAnchorAddresses),
-        this.bareMinimumPools({
-          params,
-          networkContractAddress: contractAddresses.BancorNetwork,
-          anchorAddressess: registeredAnchorAddresses,
-          ...(bancorApiTokens &&
-            bancorApiTokens.length > 0 && { tokenPrices: bancorApiTokens })
-        })
-      ]);
+      this.setRegisteredAnchorAddresses(
+        anchorAndConverters.map(x => x.anchorAddress)
+      );
+
       console.timeEnd("ThirdPromise");
 
       const blackListedAnchors = ["0x7Ef1fEDb73BD089eC1010bABA26Ca162DFa08144"];
 
-      const passedAnchorAndConvertersMatched = anchorAndConvertersMatched.filter(
+      const passedAnchorAndConvertersMatched = anchorAndConverters.filter(
         notBlackListed(blackListedAnchors)
       );
 
