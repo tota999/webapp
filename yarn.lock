@@ -3031,6 +3031,13 @@
   resolved "https://registry.yarnpkg.com/@vue/web-component-wrapper/-/web-component-wrapper-1.2.0.tgz#bb0e46f1585a7e289b4ee6067dcc5a6ae62f1dd1"
   integrity sha512-Xn/+vdm9CjuC9p3Ae+lTClNutrVhsXpzxvoTXXtoys6kVRX9FkueSUAqSWAyZntmVLlR4DosBV4pH8y5Z/HbUw==
 
+"@vuex-orm/core@^0.36.3":
+  version "0.36.3"
+  resolved "https://registry.yarnpkg.com/@vuex-orm/core/-/core-0.36.3.tgz#0ce056238224eae3c5fbcc6c0c0bde40920e4548"
+  integrity sha512-YlYtNTH4JECVDgF9iCwRyoDtnCqTBkiIYtfMbw2YVIfGP0/c+T9jYXhEzNYGey3Uiiq8WbIdlKBbZpu4llIwZg==
+  dependencies:
+    normalizr "^3.6.0"
+
 "@walletconnect/client@^1.2.2":
   version "1.2.2"
   resolved "https://registry.yarnpkg.com/@walletconnect/client/-/client-1.2.2.tgz#bbebf8fbaeaf6d54e8b65cdaa67cacb978765eeb"
@@ -12503,6 +12510,11 @@ normalize-url@^4.1.0:
   version "4.5.0"
   resolved "https://registry.yarnpkg.com/normalize-url/-/normalize-url-4.5.0.tgz#453354087e6ca96957bd8f5baf753f5982142129"
   integrity sha512-2s47yzUxdexf1OhyRi4Em83iQk0aPvwTddtFz4hnSSw9dCEsLEGf6SwIO8ss/19S9iBb5sJaOuTvTGDeZI00BQ==
+
+normalizr@^3.6.0:
+  version "3.6.0"
+  resolved "https://registry.yarnpkg.com/normalizr/-/normalizr-3.6.0.tgz#b8bbc4546ffe43c1c2200503041642915fcd3e1c"
+  integrity sha512-25cd8DiDu+pL46KIaxtVVvvEPjGacJgv0yUg950evr62dQ/ks2JO1kf7+Vi5/rMFjaSTSTls7aCnmRlUSljtiA==
 
 npm-bundled@^1.0.1:
   version "1.1.1"

@@ -1,5 +1,6 @@
 import Vue from "vue";
 import Vuex from "vuex";
+import VuexORM from "@vuex-orm/core";
 
 import { GeneralModule } from "./modules/general";
 import { EosTransitModule } from "./modules/wallet/eosWallet";
@@ -11,6 +12,17 @@ import { WalletModule } from "./modules/wallet/index";
 import { NetworkModule } from "./modules/network/index";
 import { EosNetworkModule } from "./modules/network/eosNetwork";
 import { createProxy, extractVuexModule } from "vuex-class-component";
+import Token from "./modules/swap/models/Token";
+import Pool from "./modules/swap/models/Pool";
+import Reserve from "./modules/swap/models/Reserve";
+import ReserveBalance from "./modules/swap/models/ReserveBalance";
+
+const database = new VuexORM.Database();
+
+database.register(Token);
+database.register(Pool);
+database.register(Reserve);
+database.register(ReserveBalance);
 
 Vue.use(Vuex);
 
@@ -26,6 +38,7 @@ export const store = new Vuex.Store({
     ...extractVuexModule(NetworkModule),
     ...extractVuexModule(EosNetworkModule)
   },
+  plugins: [VuexORM.install(database)],
   strict: process.env.NODE_ENV !== "production"
 });
 

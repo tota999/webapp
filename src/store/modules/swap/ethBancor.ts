@@ -128,6 +128,9 @@ import { knownVersions } from "@/api/eth/knownConverterVersions";
 import { MultiCall, ShapeWithLabel, DataTypes } from "eth-multicall";
 import moment from "moment";
 
+import MyToken from './models/Token';
+import MyPool from "./models/Pool"
+
 const get_volumes = async (converter: string) =>
   bancorSubgraph(`
 {
@@ -4795,6 +4798,24 @@ export class EthBancorModule
       return this.refresh();
     }
 
+    const pools = [
+      {
+        id: 'hello',
+        fee: '0.3',
+        token_id: "eth",
+        token: {
+          symbol: "hello",
+          decimals: 18
+        },
+        converterType: '2',
+        version: '21'
+      }
+    ]
+    MyPool.insert({ data: pools })
+
+
+    const x = MyPool.query().with('token').all()
+    console.log(x, 'crying lightning',)
     BigNumber.config({ EXPONENTIAL_AT: 256 });
 
     const web3NetworkVersion = await web3.eth.getChainId();
