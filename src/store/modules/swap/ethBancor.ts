@@ -4798,15 +4798,63 @@ export class EthBancorModule
       return this.refresh();
     }
 
+
+    // id: this.attr(null),
+    // pool_id: this.attr(null),
+    // decWeight: this.attr(""),
+    // token: this.hasOne(Token, "token_id"),
+    // balance: this.hasOne(ReserveBalance, "reserve_id")
+
     const pools = [
       {
-        id: 'hello',
         fee: '0.3',
-        token_id: "eth",
-        token: {
-          symbol: "hello",
-          decimals: 18
-        },
+        reserves: [
+          {
+            decWeight: '0.5',
+            token: [{
+              id: 'red',
+              symbol: "red"
+            }],
+            balance: {
+              weiBalance: '500'
+            }
+          },
+          {
+            decWeight: '0.5',
+            token: [{
+              symbol: "blue"
+            }],
+            balance: {
+              weiBalance: "1000"
+            }
+          }
+        ],
+        converterType: '2',
+        version: '21'
+      },
+      {
+        fee: '0.3',
+        reserves: [
+          {
+            decWeight: '0.5',
+            token: {
+              id: 'red',
+              symbol: "red"
+            },
+            balance: {
+              weiBalance: '500'
+            }
+          },
+          {
+            decWeight: '0.5',
+            token: [{
+              symbol: "pink"
+            }],
+            balance: {
+              weiBalance: "1000"
+            }
+          }
+        ],
         converterType: '2',
         version: '21'
       }
@@ -4814,9 +4862,17 @@ export class EthBancorModule
     MyPool.insert({ data: pools })
 
 
-    const x = MyPool.query().with('token').all()
-    console.log(x, 'crying lightning',)
+    const x = MyPool.query().with('reserves.token').all()
+    // @ts-ignore
+    console.log(x, 'crying lightning')
     BigNumber.config({ EXPONENTIAL_AT: 256 });
+
+
+    const before = x.slice();
+
+    MyToken.insertOrUpdate({ data: [ { id: "red", symbol: 'reddish' }]})
+    const after = MyPool.query().with('reserves.token').all().slice()
+    console.log({ before, after })
 
     const web3NetworkVersion = await web3.eth.getChainId();
     const currentNetwork: EthNetworks = web3NetworkVersion;

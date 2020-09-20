@@ -1,5 +1,4 @@
 import { Model } from "@vuex-orm/core";
-import Reserve from "./Reserve";
 
 export default class ReserveBalance extends Model {
   static entity = "reservebalances";
@@ -7,8 +6,8 @@ export default class ReserveBalance extends Model {
   static fields() {
     return {
       id: this.attr(null),
-      weiBalance: this.attr(""),
-      reserve: this.hasOne(Reserve, "id")
+      reserve_id: this.attr(null),
+      weiBalance: this.attr("")
     };
   }
 }

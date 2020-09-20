@@ -16,6 +16,7 @@ import Token from "./modules/swap/models/Token";
 import Pool from "./modules/swap/models/Pool";
 import Reserve from "./modules/swap/models/Reserve";
 import ReserveBalance from "./modules/swap/models/ReserveBalance";
+import TokenReserve from "./modules/swap/models/TokenReserve";
 
 const database = new VuexORM.Database();
 
@@ -23,6 +24,7 @@ database.register(Token);
 database.register(Pool);
 database.register(Reserve);
 database.register(ReserveBalance);
+database.register(TokenReserve);
 
 Vue.use(Vuex);
 
