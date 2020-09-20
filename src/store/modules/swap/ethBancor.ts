@@ -128,6 +128,76 @@ import { knownVersions } from "@/api/eth/knownConverterVersions";
 import { MultiCall, ShapeWithLabel, DataTypes } from "eth-multicall";
 import moment from "moment";
 
+
+
+const findClosestTime = (targetTime: number, prices: HistoricalPrice[]) => prices.reduce((closestTime, testingTime) => {
+  const testingDifference = Math.abs(targetTime - testingTime[0]);
+  const bestTimeDifference = Math.abs(targetTime - closestTime[0])
+
+  const testingBeatsCurrentBest = testingDifference < bestTimeDifference;
+  return testingBeatsCurrentBest ? testingTime : closestTime;
+})
+
+
+
+const bntUsdPricesCryptoCompare = async() => {
+
+ interface CompareRes {
+  Response:   string;
+  Message:    string;
+  HasWarning: boolean;
+  Type:       number;
+  RateLimit:  RateLimit;
+  Data:       Data;
+}
+
+ interface Data {
+  Aggregated: boolean;
+  TimeFrom:   number;
+  TimeTo:     number;
+  Data:       Datum[];
+}
+
+ interface Datum {
+  time:             number;
+  high:             number;
+  low:              number;
+  open:             number;
+  volumefrom:       number;
+  volumeto:         number;
+  close:            number;
+  conversionType:   ConversionType;
+  conversionSymbol: ConversionSymbol;
+}
+
+ enum ConversionSymbol {
+  Btc = "BTC",
+  Empty = "",
+  Eth = "ETH",
+}
+
+ enum ConversionType {
+  Direct = "direct",
+  Multiply = "multiply",
+}
+
+ interface RateLimit {}
+
+  const getUrl = `https://min-api.cryptocompare.com/data/v2/histoday?fsym=BNT&tsym=USD&limit=270&aggregate=1&api_key=047c4e9acd6037f7dd26b298d329058fa3b336b562e4911fa55f0cf10dbe4f27`
+
+  const res = await axios.get<CompareRes>(getUrl);
+
+  return res.data;
+
+}
+
+type HistoricalPrice = [unixTime: number, usdPrice: number]
+
+const historicalBntPrices = async(): Promise<HistoricalPrice[]> => {
+  const res = await bntUsdPricesCryptoCompare();
+  return res.Data.Data.map(price => [price.time, price.close]);
+} 
+
 const get_volumes = async (converter: string) =>
   bancorSubgraph(`
 {
@@ -421,19 +491,7 @@ const getPool = async (anchorId: string) => {
 }
 
 const totalBntVolumeAtBlocks = async (blocks: string[])=> {
-  const [usdPrices, res] = await Promise.all([usdPriceOfEth(blocks), getVolumeStats(blocks)]);
-
-    console.log(res, 'duprew');
-    // For every block
-    // Get the BNT/ETH anchor
-    // Work out the price of BNT in ETH tokens
-    // Times that by the price of ETH to work out the USD price of BNT
-    // Return an array of [block, usdPriceOfBnt] 
-
-    const xx = res.map(([blockNumber, converters]) => [blockNumber, converters.filter(converter => converter.balances.some(balance => compareString(balance.token.id, '0x1f573d6fb3f13d689ff844b4ce37794d79a7ff1c')))])
-
-    console.log(xx, 'doubt you can')
-  
+  const res = await getVolumeStats(blocks)
 
   const totalVolumeAtBlock = res.map(([block, converters]) => {
     const uniqueAnchors = uniqWith(
@@ -502,7 +560,7 @@ const totalBntVolumeAtBlocks = async (blocks: string[])=> {
   const blockSummaries = totalVolumeAtBlock.sort((a, b) =>
     new BigNumber(b[1]).minus(a[1]).toNumber()
   );
-  return blockSummaries;
+  return blockSummaries.map(([blockNumber, totalVolume, totalLiquidity]) => ({ blockNumber, totalVolume, totalLiquidity }))
 };
 
 const decodedToTimedDecoded = <T>(
@@ -4674,20 +4732,49 @@ export class EthBancorModule
           .minus(new BigNumber(backBlocks).times(backNumber))
           .toString()
       );
-    const data = await totalBntVolumeAtBlocks(blocksToRequest);
 
-    console.log(data, "came back in vuex");
+    const [bntVolumeAndLiq, bntUsdPrices] = await Promise.all([totalBntVolumeAtBlocks(blocksToRequest), historicalBntPrices()]);
 
-    const withTimestamp = data.map(([blockNumber, totalVolume, totalLiquidity]) => {
+    console.log(bntVolumeAndLiq, "came back in vuex");
+
+    const withTimestamp = bntVolumeAndLiq.map(({blockNumber, totalVolume, totalLiquidity}) => {
       const unixTime = estimateBlockTimeUnix(
         Number(blockNumber),
         Number(latestBlock),
         timeNow
       );
-      return [blockNumber, totalVolume, totalLiquidity, unixTime] as TotalVolumeAndLiquidity;
+      return {blockNumber, totalVolume, totalLiquidity, unixTime};
     });
 
-    this.setVolume(withTimestamp);
+
+    
+    const withBntPrice = withTimestamp.map(obj => {
+      const { unixTime } =  obj;
+      const closestTimePriceRecord = findClosestTime(unixTime, bntUsdPrices);
+      const differenceInUnix = Math.abs(unixTime - closestTimePriceRecord[0])
+      const x = moment.duration(differenceInUnix, 'seconds')
+      console.log('is the difference in days', x.asDays())
+      return {
+        ...obj,
+        usdPrice: closestTimePriceRecord[1]
+      }
+
+    })
+
+    const withUsdPrices = withBntPrice.map(obj => {
+      const totalLiquidityUsd = new BigNumber(obj.totalLiquidity).times(obj.usdPrice).toString()
+      const totalVolumeUsd = new BigNumber(obj.totalVolume).times(obj.usdPrice).toString()
+
+      return {
+        ...obj,
+        totalLiquidityUsd,
+        totalVolumeUsd
+      }
+    })
+
+    console.log(withUsdPrices, 'is with bnt price!')
+
+    // this.setVolume(withTimestamp);
   }
 
   @action async pullEvents({
