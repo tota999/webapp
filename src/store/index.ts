@@ -21,8 +21,7 @@ import TokenMeta from "./modules/swap/models/TokenMeta";
 import V1Pool from "./modules/swap/models/V1Pool";
 import V2Pool from "./modules/swap/models/V2Pool";
 import V2Reserve from "./modules/swap/models/V2Reserve";
-
-
+import Feed from "./modules/swap/models/ReserveFeed";
 
 const database = new VuexORM.Database();
 
@@ -35,6 +34,7 @@ database.register(TokenMeta);
 database.register(V1Pool);
 database.register(V2Pool);
 database.register(V2Reserve);
+database.register(Feed);
 
 Vue.use(Vuex);
 

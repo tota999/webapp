@@ -352,7 +352,7 @@ interface PoolTokenPosition {
 }
 
 export interface ReserveFeed {
-  liqDepth: number;
+  liqDepth: string;
   poolId: string;
   reserveAddress: string;
   costByNetworkUsd?: number;

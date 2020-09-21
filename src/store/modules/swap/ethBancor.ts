@@ -903,7 +903,7 @@ const buildReserveFeedsTraditional = (
 
   const liqDepth = new BigNumber(networkReserve.decAmount)
     .times(usdCostOfNetworkReserve)
-    .toNumber();
+    .toString();
 
   return [
     {
@@ -1017,7 +1017,7 @@ const buildReserveFeedsChainlink = (
       reserveAddress: primaryReserveToken.token.contract,
       poolId: relay.anchorAddress,
       priority: 10,
-      liqDepth: primaryLiquidityDepth.toNumber(),
+      liqDepth: primaryLiquidityDepth.toString(),
       costByNetworkUsd: primaryLiquidityDepth
         .div(primaryReserveToken.decAmount)
         .toNumber()
@@ -1026,7 +1026,7 @@ const buildReserveFeedsChainlink = (
       reserveAddress: secondaryReserveToken.token.contract,
       poolId: relay.anchorAddress,
       priority: 10,
-      liqDepth: secondarysLiqDepth.toNumber(),
+      liqDepth: secondarysLiqDepth.toString(),
       costByNetworkUsd: secondarysPrice
     }
   ];
@@ -2453,10 +2453,10 @@ export class EthBancorModule
           ? updateArray(
               acc,
               token =>
-                compareString(token.id!, item.id) && !isNaN(item.liqDepth),
-              token => ({ ...token, liqDepth: token.liqDepth! + item.liqDepth })
+                compareString(token.id!, item.id) && !new BigNumber(item.liqDepth).isNaN(),
+              token => ({ ...token, liqDepth: new BigNumber(token.liqDepth!).plus(item.liqDepth).toNumber() })
             )
-          : [...acc, item as ViewToken];
+          : [...acc, { ...item, liqDepth: new BigNumber(item.liqDepth).toNumber() } as ViewToken];
       }, []);
     console.timeEnd("tokens");
     return ret;
@@ -2528,9 +2528,9 @@ export class EthBancorModule
           })),
           fee: relay.fee / 100,
           liqDepth: relay.reserves.reduce(
-            (acc, item) => acc + item.reserveFeed!.liqDepth,
-            0
-          ),
+            (acc, item) => new BigNumber(acc).plus(item.reserveFeed!.liqDepth),
+            new BigNumber(0)
+          ).toNumber(),
           owner: relay.owner,
           symbol: tokenReserve.symbol,
           addLiquiditySupported: true,
@@ -2556,12 +2556,12 @@ export class EthBancorModule
         );
 
         let liqDepth = relay.reserves.reduce(
-          (acc, item) => acc + item.reserveFeed!.liqDepth,
-          0
-        );
+          (acc, item) => new BigNumber(acc).plus(item.reserveFeed!.liqDepth),
+          new BigNumber(0)
+        ).toString();
 
-        if (Number.isNaN(liqDepth)) {
-          liqDepth = 0;
+        if (new BigNumber(liqDepth).isNaN()) {
+          liqDepth = '0';
         }
 
         return {
@@ -2576,7 +2576,7 @@ export class EthBancorModule
             smartTokenSymbol: relay.anchor.contract
           })),
           fee: relay.fee / 100,
-          liqDepth,
+          liqDepth: new BigNumber(liqDepth).toNumber(),
           owner: relay.owner,
           symbol: tokenReserve.symbol,
           addLiquiditySupported: true,
@@ -5331,6 +5331,13 @@ export class EthBancorModule
 
     }
 
+    this.updateRelays(allPools);
+
+    const bancorAddedReserveFeeds = await this.addPossiblePropsFromBancorApi(allReserveFeeds);
+    this.updateRelayFeeds(
+      bancorAddedReserveFeeds
+    );
+
     const newPools = (allPools.filter(x => x.converterType == PoolType.Traditional) as RelayWithReserveBalances[]).map((pool): OrmV1Pool => {
       pool.reserves
 
@@ -5353,6 +5360,7 @@ export class EthBancorModule
           ({ 
             id: (pool.id + reserve.contract).toLowerCase(),
             decWeight: String(reserve.reserveWeight),
+            feed: bancorAddedReserveFeeds.find(feed => compareString(feed.reserveAddress, reserve.contract) && compareString(feed.poolId, pool.id)),
             balance: {
               weiBalance: pool.reserveBalances.find(balance => compareString(balance.id, reserve.contract))!.amount
             }, 
@@ -5381,6 +5389,7 @@ export class EthBancorModule
           ({
             id: (pool.id + reserve.contract).toLowerCase(),
             decWeight: String(reserve.reserveWeight),
+            feed: bancorAddedReserveFeeds.find(feed => compareString(feed.reserveAddress, reserve.contract) && compareString(feed.poolId, pool.id)),
             poolToken: [pool.anchor.poolTokens.find(x => compareString(x.reserveId, reserve.contract))!].map((poolToken): OrmToken => ({ 
               id: poolToken.poolToken.contract.toLowerCase(),
               symbol: poolToken.poolToken.symbol,
@@ -5411,10 +5420,21 @@ export class EthBancorModule
     const v2PoolsBack = MyV2Pool.query().where('converterType', '2').withAllRecursive().all()
     console.log('v2poolsback', v2PoolsBack, newV2Pools, 'were sent')
 
-    this.updateRelays(allPools);
-    this.updateRelayFeeds(
-      await this.addPossiblePropsFromBancorApi(allReserveFeeds)
-    );
+    const q = MyV1Pool.query().with('reserves.token', query => {
+      query.where('symbol', 'ANT')
+    }).get()
+
+    const y = MyV1Pool.query().with('reserves', (query) => {
+  query.with('token', (query) => {
+    query.where('symbol', 'ANT')
+  })
+}).get()
+
+
+
+    console.log({ q, y }, 'was q')
+
+ 
     const tokensInChunk = pools
       .flatMap(tokensInRelay)
       .map(token => token.contract);
