@@ -1,5 +1,5 @@
 import Pool from "./Pool";
-import Token from "./Token";
+import V2Reserve from "./V2Reserve";
 
 export default class V2Pool extends Pool {
   static entity = "v2pool";
@@ -8,7 +8,8 @@ export default class V2Pool extends Pool {
   static fields() {
     return {
       ...super.fields(),
-      poolTokens: this.hasMany(Token, "token_id", "id")
+      poolContainerAddress: this.attr(''),
+      reserves: this.hasMany(V2Reserve, "pool_id"),
     };
   }
 }

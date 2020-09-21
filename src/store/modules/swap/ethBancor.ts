@@ -132,6 +132,8 @@ import MyToken from './models/Token';
 import MyPool from "./models/Pool"
 import MyTokenMeta from "./models/TokenMeta"
 import MyV1Pool from "./models/V1Pool"
+import MyV2Pool from "./models/V2Pool"
+
 
 const get_volumes = async (converter: string) =>
   bancorSubgraph(`
@@ -4807,74 +4809,74 @@ export class EthBancorModule
     // token: this.hasOne(Token, "token_id"),
     // balance: this.hasOne(ReserveBalance, "reserve_id")
 
-    const pools = [
-      {
-        fee: '0.3',
-        reserves: [
-          {
-            decWeight: '0.5',
-            token: [{
-              id: 'red',
-              symbol: "red"
-            }],
-            balance: {
-              weiBalance: '500'
-            }
-          },
-          {
-            decWeight: '0.5',
-            token: [{
-              symbol: "blue"
-            }],
-            balance: {
-              weiBalance: "1000"
-            }
-          }
-        ],
-        converterType: '2',
-        version: '21'
-      },
-      {
-        fee: '0.3',
-        reserves: [
-          {
-            decWeight: '0.5',
-            token: {
-              id: 'red',
-              symbol: "red"
-            },
-            balance: {
-              weiBalance: '500'
-            }
-          },
-          {
-            decWeight: '0.5',
-            token: [{
-              symbol: "pink"
-            }],
-            balance: {
-              weiBalance: "1000"
-            }
-          }
-        ],
-        converterType: '2',
-        version: '21'
-      }
-    ]
-    MyPool.insert({ data: pools })
+    // const pools = [
+    //   {
+    //     fee: '0.3',
+    //     reserves: [
+    //       {
+    //         decWeight: '0.5',
+    //         token: [{
+    //           id: 'red',
+    //           symbol: "red"
+    //         }],
+    //         balance: {
+    //           weiBalance: '500'
+    //         }
+    //       },
+    //       {
+    //         decWeight: '0.5',
+    //         token: [{
+    //           symbol: "blue"
+    //         }],
+    //         balance: {
+    //           weiBalance: "1000"
+    //         }
+    //       }
+    //     ],
+    //     converterType: '2',
+    //     version: '21'
+    //   },
+    //   {
+    //     fee: '0.3',
+    //     reserves: [
+    //       {
+    //         decWeight: '0.5',
+    //         token: {
+    //           id: 'red',
+    //           symbol: "red"
+    //         },
+    //         balance: {
+    //           weiBalance: '500'
+    //         }
+    //       },
+    //       {
+    //         decWeight: '0.5',
+    //         token: [{
+    //           symbol: "pink"
+    //         }],
+    //         balance: {
+    //           weiBalance: "1000"
+    //         }
+    //       }
+    //     ],
+    //     converterType: '2',
+    //     version: '21'
+    //   }
+    // ]
+    // MyPool.insert({ data: pools })
 
 
-    const x = MyPool.query().with('reserves.token').all()
+    // const x = MyPool.query().with('reserves.token').all()
     // @ts-ignore
-    console.log(x, 'crying lightning')
+    // console.log(x, 'crying lightning')
     BigNumber.config({ EXPONENTIAL_AT: 256 });
 
 
-    const before = x.slice();
+    // const before = x.slice();
 
-    MyToken.insertOrUpdate({ data: [ { id: "red", symbol: 'reddish' }]})
-    const after = MyPool.query().with('reserves.token').all().slice()
-    console.log({ before, after })
+    // MyToken.insertOrUpdate({ data: [ { id: "red", symbol: 'reddish' }]})
+    // const after = MyPool.query().with('reserves.token').all().slice()
+    // console.log({ before, after })
 
     const web3NetworkVersion = await web3.eth.getChainId();
     const currentNetwork: EthNetworks = web3NetworkVersion;
@@ -5319,8 +5321,14 @@ export class EthBancorModule
       reserves: { decWeight: string; token: OrmToken[]; balance: { weiBalance: string} }[]
     }
 
-    interface OrmV1Pool {
+    interface OrmV1Pool extends OrmPool {
       poolToken: OrmToken
+    }
+
+    interface OrmV2Pool extends OrmPool {
+      poolContainerAddress: string;
+      reserves: { decWeight: string; token: OrmToken[]; balance: { weiBalance: string}, poolToken: OrmToken }[]
+
     }
 
     const newPools = (allPools.filter(x => x.converterType == PoolType.Traditional) as RelayWithReserveBalances[]).map((pool): OrmV1Pool => {
@@ -5336,14 +5344,14 @@ export class EthBancorModule
           id: smartToken.contract,
           symbol: smartToken.symbol
         },
-        id: pool.id,
+        id: pool.id.toLowerCase(),
         converterContract: pool.contract,
         anchorContract: pool.id,
         converterType: String(pool.converterType),
         version: pool.version,
         reserves: pool.reserves.map(reserve => 
           ({ 
-            id: pool.id + reserve.contract,
+            id: (pool.id + reserve.contract).toLowerCase(),
             decWeight: String(reserve.reserveWeight),
             balance: {
               weiBalance: pool.reserveBalances.find(balance => compareString(balance.id, reserve.contract))!.amount
@@ -5358,11 +5366,50 @@ export class EthBancorModule
       }
     })
 
-    console.log(newPools, 'are the new pools')
+    const newV2Pools = (allPools.filter(x => x.converterType == PoolType.ChainLink) as ChainLinkRelay[]).map((pool): OrmV2Pool => {
+
+      const poolContainer = pool.anchor as PoolContainer;
+      return {
+        poolContainerAddress: poolContainer.poolContainerAddress,
+        fee: String(pool.fee),
+        id: (pool.id).toLowerCase(),
+        converterContract: pool.contract,
+        anchorContract: pool.id,
+        converterType: String(pool.converterType),
+        version: pool.version,
+        reserves: pool.reserves.map(reserve => 
+          ({
+            id: (pool.id + reserve.contract).toLowerCase(),
+            decWeight: String(reserve.reserveWeight),
+            poolToken: [pool.anchor.poolTokens.find(x => compareString(x.reserveId, reserve.contract))!].map((poolToken): OrmToken => ({ 
+              id: poolToken.poolToken.contract.toLowerCase(),
+              symbol: poolToken.poolToken.symbol,
+              decimals: String(poolToken.poolToken.decimals),
+              contract: poolToken.poolToken.contract
+            }))[0],
+            balance: {
+              weiBalance: ''
+            }, 
+            token: [{ 
+              id: reserve.contract.toLowerCase(), 
+              symbol: reserve.symbol, 
+              decimals: String(reserve.decimals), 
+              contract: reserve.contract,
+            }]
+          })),
+      }
+    })
+
+    console.log(newPools, 'are the new pools', newV2Pools ,'are the v2 pools')
     MyV1Pool.insertOrUpdate({ data: newPools })
+    MyV2Pool.insertOrUpdate({ data: newV2Pools })
+
+
 
     const poolsBack = MyV1Pool.query().withAllRecursive().all()
     console.log(poolsBack, 'i have the blues')
+    const v2PoolsBack = MyV2Pool.query().where('converterType', '2').withAllRecursive().all()
+    console.log('v2poolsback', v2PoolsBack, newV2Pools, 'were sent')
 
     this.updateRelays(allPools);
     this.updateRelayFeeds(
