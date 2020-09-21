@@ -130,6 +130,8 @@ import moment from "moment";
 
 import MyToken from './models/Token';
 import MyPool from "./models/Pool"
+import MyTokenMeta from "./models/TokenMeta"
+import MyV1Pool from "./models/V1Pool"
 
 const get_volumes = async (converter: string) =>
   bancorSubgraph(`
@@ -4908,7 +4910,14 @@ export class EthBancorModule
         )
         .catch(_ => {});
 
-      getTokenMeta(currentNetwork).then(this.setTokenMeta);
+      getTokenMeta(currentNetwork).then((tokenMeta) => {
+        MyTokenMeta.insertOrUpdate({ data: tokenMeta.map(x => ({ ...x, id: x.id.toLowerCase(), meta_id: x.id.toLowerCase() })) })
+        this.setTokenMeta(tokenMeta)
+
+        const setMeta = MyTokenMeta.query().all()
+        console.log(setMeta, 'was meta that was set')
+      
+      });
       this.fetchUsdPriceOfBnt();
 
       console.time("FirstPromise");
@@ -5264,6 +5273,96 @@ export class EthBancorModule
     this.updateFailedPools(
       poolsFailed.map(failedPool => failedPool.anchorAddress)
     );
+
+    // {
+    //   fee: '0.3',
+    //   reserves: [
+    //     {
+    //       decWeight: '0.5',
+    //       token: [{
+    //         id: 'red',
+    //         symbol: "red"
+    //       }],
+    //       balance: {
+    //         weiBalance: '500'
+    //       }
+    //     },
+    //     {
+    //       decWeight: '0.5',
+    //       token: [{
+    //         symbol: "blue"
+    //       }],
+    //       balance: {
+    //         weiBalance: "1000"
+    //       }
+    //     }
+    //   ],
+    //   converterType: '2',
+    //   version: '21'
+    // }
+
+
+    interface OrmToken {
+        id: string; 
+        symbol: string, 
+        decimals: string; 
+        contract: string,
+    }
+
+    interface OrmPool {
+      id: string;
+      anchorContract: string;
+      converterContract: string;
+      fee: string;
+      converterType: string;
+      version: string;
+      reserves: { decWeight: string; token: OrmToken[]; balance: { weiBalance: string} }[]
+    }
+
+    interface OrmV1Pool {
+      poolToken: OrmToken
+    }
+
+    const newPools = (allPools.filter(x => x.converterType == PoolType.Traditional) as RelayWithReserveBalances[]).map((pool): OrmV1Pool => {
+      pool.reserves
+
+      const smartToken = pool.anchor as SmartToken
+      return {
+        fee: String(pool.fee),
+        poolToken: {
+          contract: smartToken.contract,
+          // @ts-ignore
+          decimals: smartToken.decimals,
+          id: smartToken.contract,
+          symbol: smartToken.symbol
+        },
+        id: pool.id,
+        converterContract: pool.contract,
+        anchorContract: pool.id,
+        converterType: String(pool.converterType),
+        version: pool.version,
+        reserves: pool.reserves.map(reserve => 
+          ({ 
+            id: pool.id + reserve.contract,
+            decWeight: String(reserve.reserveWeight),
+            balance: {
+              weiBalance: pool.reserveBalances.find(balance => compareString(balance.id, reserve.contract))!.amount
+            }, 
+            token: [{ 
+              id: reserve.contract.toLowerCase(), 
+              symbol: reserve.symbol, 
+              decimals: String(reserve.decimals), 
+              contract: reserve.contract,
+            }]
+          })),
+      }
+    })
+
+    console.log(newPools, 'are the new pools')
+    MyV1Pool.insertOrUpdate({ data: newPools })
+
+    const poolsBack = MyV1Pool.query().withAllRecursive().all()
+    console.log(poolsBack, 'i have the blues')
 
     this.updateRelays(allPools);
     this.updateRelayFeeds(

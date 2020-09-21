@@ -1,5 +1,6 @@
 import { Model } from "@vuex-orm/core";
 import Reserve from "./Reserve";
+import TokenMeta from "./TokenMeta";
 import TokenReserve from "./TokenReserve";
 
 export default class Token extends Model {
@@ -8,6 +9,7 @@ export default class Token extends Model {
   static fields() {
     return {
       id: this.attr(null),
+      token_id: this.attr(""),
       reserves: this.belongsToMany(
         Reserve,
         TokenReserve,
@@ -16,7 +18,8 @@ export default class Token extends Model {
       ),
       contract: this.attr(""),
       decimals: this.attr(0),
-      symbol: this.attr("")
+      symbol: this.attr(""),
+      meta: this.hasOne(TokenMeta, "meta_id")
     };
   }
 }
