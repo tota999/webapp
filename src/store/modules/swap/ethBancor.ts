@@ -99,7 +99,7 @@ import {
   partition,
   first,
   omit,
-  toPairs
+  toPairs, toLower
 } from "lodash";
 import {
   buildNetworkContract,
@@ -133,6 +133,7 @@ import MyPool from "./models/Pool"
 import MyTokenMeta from "./models/TokenMeta"
 import MyV1Pool from "./models/V1Pool"
 import MyV2Pool from "./models/V2Pool"
+import MyReserve from "./models/Reserve"
 
 
 const get_volumes = async (converter: string) =>
@@ -714,8 +715,10 @@ const relayIncludesReserves = (reserves: string[]) => (relay: Relay) =>
     reserves.some(r => compareString(reserve.contract, r))
   );
 
-const compareRelayByReserves = (a: Relay, b: Relay) =>
+const compareRelayByReserves = (a: Relay | ViewRelay, b: Relay | ViewRelay) =>
+  // @ts-ignore
   a.reserves.every(reserve =>
+    // @ts-ignore
     b.reserves.some(r => compareString(reserve.contract, r.contract))
   );
 
@@ -1693,7 +1696,6 @@ export class EthBancorModule
   loadingPools: boolean = true;
 
   bancorApiTokens: TokenPrice[] = [];
-  relaysList: readonly Relay[] = [];
   tokenBalances: { id: string; balance: string }[] = [];
   bntUsdPrice: number = 0;
   tokenMeta: TokenMeta[] = [];
@@ -2415,24 +2417,21 @@ export class EthBancorModule
 
   get tokens(): ViewToken[] {
     console.time("tokens");
-    const ret = this.relaysList
-      .filter(relay =>
-        relay.reserves.every(reserve => reserve.reserveFeed && reserve.meta)
-      )
-      .flatMap(relay =>
-        relay.reserves.map(reserve => {
-          const { logo, name } = reserve.meta!;
-          const balance = this.tokenBalance(reserve.contract);
+    const ret = MyReserve.query().all()
+      .map(reserve => {
+        const token = reserve.token[0];
+          const { image: logo, name } = token.meta!;
+          const balance = this.tokenBalance(reserve.id);
           const balanceString =
             balance && new BigNumber(balance.balance).toString();
 
-          const reserveFeed = reserve.reserveFeed!;
+          const reserveFeed = reserve.feed!;
           return {
-            id: reserve.contract,
-            contract: reserve.contract,
-            precision: reserve.decimals,
-            symbol: reserve.symbol,
-            name: name || reserve.symbol,
+            id: reserve.id,
+            contract: reserve.id,
+            precision: Number(token.decimals),
+            symbol: token.symbol,
+            name: name || token.symbol,
             ...(reserveFeed.costByNetworkUsd && {
               price: reserveFeed.costByNetworkUsd
             }),
@@ -2443,7 +2442,6 @@ export class EthBancorModule
             ...(balance && { balance: balanceString })
           };
         })
-      )
       .sort(sortByLiqDepth)
       .reduce<ViewToken[]>((acc, item) => {
         const existingToken = acc.find(token =>
@@ -2569,87 +2567,87 @@ export class EthBancorModule
     return newReturn;
   }
 
-  get chainkLinkRelays(): ViewRelay[] {
-    return (this.relaysList.filter(isChainLink) as ChainLinkRelay[])
-      .filter(relay =>
-        relay.reserves.every(reserve => reserve.reserveFeed && reserve.meta)
-      )
-      .map(relay => {
-        const [networkReserve, tokenReserve] = relay.reserves;
+  // get chainkLinkRelays(): ViewRelay[] {
+  //   return (this.relaysList.filter(isChainLink) as ChainLinkRelay[])
+  //     .filter(relay =>
+  //       relay.reserves.every(reserve => reserve.reserveFeed && reserve.meta)
+  //     )
+  //     .map(relay => {
+  //       const [networkReserve, tokenReserve] = relay.reserves;
 
-        const { poolContainerAddress } = relay.anchor;
+  //       const { poolContainerAddress } = relay.anchor;
 
-        return {
-          id: poolContainerAddress,
-          reserves: relay.reserves.map(reserve => ({
-            reserveWeight: reserve.reserveWeight,
-            id: reserve.contract,
-            reserveId: poolContainerAddress + reserve.contract,
-            logo: [reserve.meta!.logo],
-            symbol: reserve.symbol,
-            contract: reserve.contract,
-            smartTokenSymbol: poolContainerAddress
-          })),
-          fee: relay.fee / 100,
-          liqDepth: relay.reserves.reduce(
-            (acc, item) => new BigNumber(acc).plus(item.reserveFeed!.liqDepth),
-            new BigNumber(0)
-          ).toNumber(),
-          owner: relay.owner,
-          symbol: tokenReserve.symbol,
-          addLiquiditySupported: true,
-          removeLiquiditySupported: true,
-          focusAvailable: false,
-          v2: true
-        } as ViewRelay;
-      });
-  }
+  //       return {
+  //         id: poolContainerAddress,
+  //         reserves: relay.reserves.map(reserve => ({
+  //           reserveWeight: reserve.reserveWeight,
+  //           id: reserve.contract,
+  //           reserveId: poolContainerAddress + reserve.contract,
+  //           logo: [reserve.meta!.logo],
+  //           symbol: reserve.symbol,
+  //           contract: reserve.contract,
+  //           smartTokenSymbol: poolContainerAddress
+  //         })),
+  //         fee: relay.fee / 100,
+  //         liqDepth: relay.reserves.reduce(
+  //           (acc, item) => new BigNumber(acc).plus(item.reserveFeed!.liqDepth),
+  //           new BigNumber(0)
+  //         ).toNumber(),
+  //         owner: relay.owner,
+  //         symbol: tokenReserve.symbol,
+  //         addLiquiditySupported: true,
+  //         removeLiquiditySupported: true,
+  //         focusAvailable: false,
+  //         v2: true
+  //       } as ViewRelay;
+  //     });
+  // }
 
-  get traditionalRelays(): ViewRelay[] {
-    const availableHistories = this.availableHistories;
-    return (this.relaysList.filter(isTraditional) as TraditionalRelay[])
-      .filter(relay =>
-        relay.reserves.every(reserve => reserve.reserveFeed && reserve.meta)
-      )
-      .map(relay => {
-        const [networkReserve, tokenReserve] = relay.reserves;
+  // get traditionalRelays(): ViewRelay[] {
+  //   const availableHistories = this.availableHistories;
+  //   return (this.relaysList.filter(isTraditional) as TraditionalRelay[])
+  //     .filter(relay =>
+  //       relay.reserves.every(reserve => reserve.reserveFeed && reserve.meta)
+  //     )
+  //     .map(relay => {
+  //       const [networkReserve, tokenReserve] = relay.reserves;
 
-        const smartTokenSymbol = relay.anchor.symbol;
-        const hasHistory = availableHistories.some(history =>
-          compareString(smartTokenSymbol, history)
-        );
+  //       const smartTokenSymbol = relay.anchor.symbol;
+  //       const hasHistory = availableHistories.some(history =>
+  //         compareString(smartTokenSymbol, history)
+  //       );
 
-        let liqDepth = relay.reserves.reduce(
-          (acc, item) => new BigNumber(acc).plus(item.reserveFeed!.liqDepth),
-          new BigNumber(0)
-        ).toString();
+  //       let liqDepth = relay.reserves.reduce(
+  //         (acc, item) => new BigNumber(acc).plus(item.reserveFeed!.liqDepth),
+  //         new BigNumber(0)
+  //       ).toString();
 
-        if (new BigNumber(liqDepth).isNaN()) {
-          liqDepth = '0';
-        }
+  //       if (new BigNumber(liqDepth).isNaN()) {
+  //         liqDepth = '0';
+  //       }
 
-        return {
-          id: relay.anchor.contract,
-          reserves: relay.reserves.map(reserve => ({
-            id: reserve.contract,
-            reserveWeight: reserve.reserveWeight,
-            reserveId: relay.anchor.contract + reserve.contract,
-            logo: [reserve.meta!.logo],
-            symbol: reserve.symbol,
-            contract: reserve.contract,
-            smartTokenSymbol: relay.anchor.contract
-          })),
-          fee: relay.fee / 100,
-          liqDepth: new BigNumber(liqDepth).toNumber(),
-          owner: relay.owner,
-          symbol: tokenReserve.symbol,
-          addLiquiditySupported: true,
-          removeLiquiditySupported: true,
-          focusAvailable: hasHistory,
-          v2: false
-        } as ViewRelay;
-      });
-  }
+  //       return {
+  //         id: relay.anchor.contract,
+  //         reserves: relay.reserves.map(reserve => ({
+  //           id: reserve.contract,
+  //           reserveWeight: reserve.reserveWeight,
+  //           reserveId: relay.anchor.contract + reserve.contract,
+  //           logo: [reserve.meta!.logo],
+  //           symbol: reserve.symbol,
+  //           contract: reserve.contract,
+  //           smartTokenSymbol: relay.anchor.contract
+  //         })),
+  //         fee: relay.fee / 100,
+  //         liqDepth: new BigNumber(liqDepth).toNumber(),
+  //         owner: relay.owner,
+  //         symbol: tokenReserve.symbol,
+  //         addLiquiditySupported: true,
+  //         removeLiquiditySupported: true,
+  //         focusAvailable: hasHistory,
+  //         v2: false
+  //       } as ViewRelay;
+  //     });
+  // }
 
   @action async getGeometricMean(amounts: string[]) {
     const converter = buildConverterContract(
@@ -3003,11 +3001,9 @@ export class EthBancorModule
   }
 
   @action async relayById(relayId: string) {
-    return findOrThrow(
-      this.relaysList,
-      relay => compareString(relay.id, relayId),
-      "failed to find relay by id"
-    );
+    const pool = MyPool.query().find(relayId);
+    if (!pool) throw new Error(`Failed finding pool by ID ${relayId}`);
+    return pool;
   }
 
   @action async getUserBalancesTraditional({
@@ -5673,27 +5669,20 @@ export class EthBancorModule
   }: {
     fromId: string;
     toId: string;
-    relays: readonly Relay[];
+    relays: [id: string, reserveOne: string, reserveTwo: string][];
   }) {
-    const lowerCased = relays.map(relay => ({
-      ...relay,
-      reserves: relay.reserves.map(reserve => ({
-        ...reserve,
-        contract: reserve.contract.toLowerCase()
-      }))
-    }));
     const path = await findNewPath(
       fromId.toLowerCase(),
       toId.toLowerCase(),
-      lowerCased,
-      relay => [relay.reserves[0].contract, relay.reserves[1].contract]
+      relays,
+      ([id, reserveOne, reserveTwo]) => [reserveOne, reserveTwo]
     );
 
     const flattened = path.hops.flatMap(hop => hop[0]);
     return flattened.map(flat =>
       findOrThrow(
         relays,
-        relay => compareString(relay.contract, flat.contract),
+        relay => compareString(relay[0], flat[0]),
         "failed to find relays used in pathing"
       )
     );
@@ -5740,15 +5729,10 @@ export class EthBancorModule
     const toTokenDecimals = await this.getDecimalsByTokenAddress(toToken.id);
 
     const relaysByLiqDepth = this.relays.sort(sortByLiqDepth);
-    const relaysList = sortAlongSide(
-      this.relaysList,
-      relay => relay.id,
-      relaysByLiqDepth.map(relay => relay.id)
-    );
-    const winningRelays = uniqWith(relaysList, compareRelayByReserves);
+    const winningRelays = uniqWith(relaysByLiqDepth, compareRelayByReserves);
 
     const relays = await this.findPath({
-      relays: winningRelays,
+      relays: winningRelays.map(relay => [relay.id, relay.reserves[0].id, relay.reserves[1].id].map(toLower) as [string, string, string]),
       fromId: from.id,
       toId: to.id
     });
@@ -5985,49 +5969,53 @@ export class EthBancorModule
     }
   }
 
+  // @ts-ignore
   @action async getCost({ fromId, to }: ProposedToTransaction) {
-    if (compareString(fromId, to.id))
+    throw new Error("Fetching the cost of this token is not yet supported.");
+    if (compareString(fromId, to.id)) {
       throw new Error("Cannot convert a token to itself.");
-    const fromToken = await this.tokenById(fromId);
-    const toToken = await this.tokenById(to.id);
+    }
+    
+    // const fromToken = await this.tokenById(fromId);
+    // const toToken = await this.tokenById(to.id);
 
-    const amount = to.amount;
+    // const amount = to.amount;
 
-    const [fromTokenContract, toTokenContract] = [fromToken.id, toToken.id];
+    // const [fromTokenContract, toTokenContract] = [fromToken.id, toToken.id];
 
-    const fromTokenDecimals = await this.getDecimalsByTokenAddress(
-      fromTokenContract
-    );
-    const toTokenDecimals = await this.getDecimalsByTokenAddress(
-      toTokenContract
-    );
+    // const fromTokenDecimals = await this.getDecimalsByTokenAddress(
+    //   fromTokenContract
+    // );
+    // const toTokenDecimals = await this.getDecimalsByTokenAddress(
+    //   toTokenContract
+    // );
 
-    const relays = this.relaysList;
+    // const relays = this.relaysList;
 
-    const poolIds = relays.map(relay => relay.id);
-    const allCoveredUnderBancorApi = poolIds.every(poolId =>
-      ethBancorApiDictionary.some(dic =>
-        compareString(poolId, dic.smartTokenAddress)
-      )
-    );
-    if (!allCoveredUnderBancorApi)
-      throw new Error("Fetching the cost of this token is not yet supported.");
+    // const poolIds = relays.map(relay => relay.id);
+    // const allCoveredUnderBancorApi = poolIds.every(poolId =>
+    //   ethBancorApiDictionary.some(dic =>
+    //     compareString(poolId, dic.smartTokenAddress)
+    //   )
+    // );
+    // if (!allCoveredUnderBancorApi)
+    //   throw new Error("Fetching the cost of this token is not yet supported.");
 
-    const [fromTokenTicker, toTokenTicker] = await Promise.all([
-      ethBancorApi.getToken(fromToken.symbol),
-      ethBancorApi.getToken(toToken.symbol)
-    ]);
-    const fromTokenId = fromTokenTicker._id;
-    const toTokenId = toTokenTicker._id;
+    // const [fromTokenTicker, toTokenTicker] = await Promise.all([
+    //   ethBancorApi.getToken(fromToken.symbol),
+    //   ethBancorApi.getToken(toToken.symbol)
+    // ]);
+    // const fromTokenId = fromTokenTicker._id;
+    // const toTokenId = toTokenTicker._id;
 
-    const result = await ethBancorApi.calculateCost(
-      fromTokenId,
-      toTokenId,
-      expandToken(amount, toTokenDecimals)
-    );
+    // const result = await ethBancorApi.calculateCost(
+    //   fromTokenId,
+    //   toTokenId,
+    //   expandToken(amount, toTokenDecimals)
+    // );
 
-    return {
-      amount: shrinkToken(result, fromTokenDecimals)
-    };
+    // return {
+    //   amount: shrinkToken(result, fromTokenDecimals)
+    // };
   }
 }
