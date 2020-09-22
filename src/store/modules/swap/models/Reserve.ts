@@ -9,12 +9,19 @@ export default class Reserve extends Model {
 
   static fields() {
     return {
-      id: this.attr(null), 
+      id: this.attr(null),
       pool_id: this.attr(null),
       decWeight: this.attr(""),
-      feed: this.hasOne(ReserveFeed, 'reserve_id'),
+      feed: this.hasOne(ReserveFeed, "reserve_id"),
       token: this.belongsToMany(Token, TokenReserve, "reserve_id", "token_id"),
       balance: this.hasOne(ReserveBalance, "reserve_id")
     };
   }
+
+  id!: string;
+  pool_id!: string;
+  decWeight!: string;
+  feed!: ReserveFeed;
+  token!: Token[];
+  balance!: ReserveBalance;
 }

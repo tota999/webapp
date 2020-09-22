@@ -15,4 +15,11 @@ export default class TokenMeta extends Model {
       symbol: this.attr("")
     };
   }
+
+  id!: string;
+  meta_id!: string;
+  contract!: string;
+  image!: string;
+  name!: string;
+  symbol!: string;
 }

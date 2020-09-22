@@ -10,4 +10,6 @@ export default class ReserveBalance extends Model {
       weiBalance: this.attr("")
     };
   }
+
+  weiBalance!: string;
 }

@@ -2501,8 +2501,72 @@ export class EthBancorModule
       .sort(sortByLiqDepth)
       .sort(prioritiseV2Pools);
 
+      console.time('search')
+      const xx = MyPool.query().whereHas('reserves', query => {
+        return query.has('feed').get().length > 0 && query.whereHas('token', query => {
+          return !!query.has('meta').get()
+        }).get().length > 0
+      }).with(['reserves.token.meta', 'reserves.feed']).get()
+      console.timeEnd('search')
+      console.time('keys')
+    const newReturn = xx.map((orm): ViewRelay => {
+
+      let liqDepth = orm.reserves.reduce(
+        (acc, item) => new BigNumber(acc).plus(item.feed && item.feed.liqDepth || 0),
+        new BigNumber(0)
+      ).toString();
+
+      if (new BigNumber(liqDepth).isNaN()) {
+        liqDepth = '0';
+      }
+      console.log(orm.reserves, 'is mate')
+
+      const reserves = orm.reserves.map(reserve => {
+        const { contract, symbol, id } = reserve.token[0];
+        let logo;
+        if (reserve.token[0].meta) {
+          logo = reserve.token[0].meta.image;
+        } else {
+          logo = defaultImage
+        }
+        return ({
+          contract, 
+          symbol, 
+          id, 
+          logo: [logo], 
+          reserveId: (reserve.$id as string), 
+          reserveWeight: Number(reserve.decWeight), 
+          balance: ''
+      })}); 
+
+      return {
+        addLiquiditySupported: true,
+        fee: Number(orm.fee) / 100,
+        id: orm.id,
+        liqDepth: Number(liqDepth),
+        owner: orm.owner,
+        removeLiquiditySupported: true, 
+        reserves,
+        symbol: reserves.map(x => x.symbol).join(''),
+        v2: orm.converterType == '2',
+        focusAvailable: false
+      }
+    })
+
+    console.timeEnd('keys')
+
+    
+    
+
+    console.log(newReturn, 'should have token and meta');
+
+
+    const goal = toReturn.find(x => compareString(x.id, '0xb1CD6e4153B2a390Cf00A6556b0fC1458C4A5533'))
+    const current = newReturn.find(x => compareString(x.id, '0xb1CD6e4153B2a390Cf00A6556b0fC1458C4A5533'))
+    console.log({ goal, current, newReturn }, 'derp')
+
     console.timeEnd("relays");
-    return toReturn;
+    return newReturn;
   }
 
   get chainkLinkRelays(): ViewRelay[] {
@@ -4914,11 +4978,7 @@ export class EthBancorModule
 
       getTokenMeta(currentNetwork).then((tokenMeta) => {
         MyTokenMeta.insertOrUpdate({ data: tokenMeta.map(x => ({ ...x, id: x.id.toLowerCase(), meta_id: x.id.toLowerCase() })) })
-        this.setTokenMeta(tokenMeta)
-
-        const setMeta = MyTokenMeta.query().all()
-        console.log(setMeta, 'was meta that was set')
-      
+        this.setTokenMeta(tokenMeta);
       });
       this.fetchUsdPriceOfBnt();
 
@@ -5249,25 +5309,13 @@ export class EthBancorModule
 
     const tokenAddresses: string[][] = [];
 
-    const subgraphRes = await this.getPoolsViaSubgraph();
+    // const subgraphRes = await this.getPoolsViaSubgraph();
 
-    const notCoveredBySubGraph = convertersAndAnchors.filter(
-      anchor =>
-        !subgraphRes.pools.some(relay =>
-          compareString(relay.id, anchor.anchorAddress)
-        )
-    );
-
-    console.log(
-      subgraphRes.pools.length,
-      "covered by subgraph",
-      notCoveredBySubGraph.length,
-      "left for rpc"
-    );
+    const notCoveredBySubGraph = convertersAndAnchors
     const { pools, reserveFeeds } = await this.addPoolsV2(notCoveredBySubGraph);
 
-    const allPools = [...subgraphRes.pools, ...pools];
-    const allReserveFeeds = [...subgraphRes.reserveFeeds, ...reserveFeeds];
+    const allPools = [...pools];
+    const allReserveFeeds = [...reserveFeeds];
 
     const poolsFailed = differenceWith(convertersAndAnchors, allPools, (a, b) =>
       compareString(a.anchorAddress, b.id)
@@ -5275,34 +5323,6 @@ export class EthBancorModule
     this.updateFailedPools(
       poolsFailed.map(failedPool => failedPool.anchorAddress)
     );
-
-    // {
-    //   fee: '0.3',
-    //   reserves: [
-    //     {
-    //       decWeight: '0.5',
-    //       token: [{
-    //         id: 'red',
-    //         symbol: "red"
-    //       }],
-    //       balance: {
-    //         weiBalance: '500'
-    //       }
-    //     },
-    //     {
-    //       decWeight: '0.5',
-    //       token: [{
-    //         symbol: "blue"
-    //       }],
-    //       balance: {
-    //         weiBalance: "1000"
-    //       }
-    //     }
-    //   ],
-    //   converterType: '2',
-    //   version: '21'
-    // }
-
 
     interface OrmToken {
         id: string; 
@@ -5315,6 +5335,7 @@ export class EthBancorModule
       id: string;
       anchorContract: string;
       converterContract: string;
+      owner: string;
       fee: string;
       converterType: string;
       version: string;
@@ -5346,12 +5367,12 @@ export class EthBancorModule
         fee: String(pool.fee),
         poolToken: {
           contract: smartToken.contract,
-          // @ts-ignore
-          decimals: smartToken.decimals,
+          decimals: String(smartToken.decimals),
           id: smartToken.contract,
           symbol: smartToken.symbol
         },
         id: pool.id.toLowerCase(),
+        owner: pool.owner,
         converterContract: pool.contract,
         anchorContract: pool.id,
         converterType: String(pool.converterType),
@@ -5378,9 +5399,10 @@ export class EthBancorModule
 
       const poolContainer = pool.anchor as PoolContainer;
       return {
+        id: (pool.id).toLowerCase(),
         poolContainerAddress: poolContainer.poolContainerAddress,
         fee: String(pool.fee),
-        id: (pool.id).toLowerCase(),
+        owner: pool.owner,
         converterContract: pool.contract,
         anchorContract: pool.id,
         converterType: String(pool.converterType),
@@ -5420,19 +5442,9 @@ export class EthBancorModule
     const v2PoolsBack = MyV2Pool.query().where('converterType', '2').withAllRecursive().all()
     console.log('v2poolsback', v2PoolsBack, newV2Pools, 'were sent')
 
-    const q = MyV1Pool.query().with('reserves.token', query => {
-      query.where('symbol', 'ANT')
-    }).get()
 
-    const y = MyV1Pool.query().with('reserves', (query) => {
-  query.with('token', (query) => {
-    query.where('symbol', 'ANT')
-  })
-}).get()
+    
 
-
-
-    console.log({ q, y }, 'was q')
 
  
     const tokensInChunk = pools
@@ -5553,7 +5565,10 @@ export class EthBancorModule
       "relays and setting",
       meshedRelays.length
     );
+
+    console.time("listUpdate")
     this.relaysList = Object.freeze(meshedRelays);
+    console.timeEnd("listUpdate")
   }
 
   @mutation wipeTokenBalances() {

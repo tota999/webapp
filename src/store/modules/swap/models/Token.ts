@@ -22,4 +22,12 @@ export default class Token extends Model {
       meta: this.hasOne(TokenMeta, "meta_id")
     };
   }
+
+  id!: string;
+  token_id!: string;
+  reserves!: Reserve[];
+  contract!: string;
+  decimals!: string;
+  symbol!: string;
+  meta!: TokenMeta;
 }
