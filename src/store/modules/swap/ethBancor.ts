@@ -99,7 +99,7 @@ import {
   partition,
   first,
   omit,
-  toPairs
+  toPairs, isEqual
 } from "lodash";
 import {
   buildNetworkContract,
@@ -127,6 +127,8 @@ import BigNumber from "bignumber.js";
 import { knownVersions } from "@/api/eth/knownConverterVersions";
 import { MultiCall, ShapeWithLabel, DataTypes } from "eth-multicall";
 import moment from "moment";
+import { hardCodedAnchors } from './hardCodedAnchors';
+import { difference } from 'numeral';
 
 const get_volumes = async (converter: string) =>
   bancorSubgraph(`
@@ -775,6 +777,24 @@ interface RefinedAbiRelay {
   conversionFee: string;
   owner: string;
 }
+
+const timeNow = () => Number(new Date());
+
+const replay = async <T, Y>(
+  local: () => Promise<T>,
+  remote: () => Promise<Y>,
+  onLoad: (local: T, remote: Y, time: number) => Promise<void>
+): Promise<T | Y> => {
+  try {
+    const localRes = await local();
+    const start = timeNow()
+    remote().then(res => onLoad(localRes, res, timeNow() - start));
+    return localRes;
+  } catch(e) {
+    console.log('Local promise threw', e)
+    return remote();
+  }
+};
 
 const decToPpm = (dec: number | string): string =>
   new BigNumber(dec).times(oneMillion).toFixed(0);
@@ -4775,6 +4795,12 @@ export class EthBancorModule
     };
   }
 
+  useCache = true;
+
+  @mutation setUseCache(status: boolean) {
+    this.useCache = status;
+  }
+
   @action async blockNumberHoursAgo(hours: number) {
     const currentBlock = await web3.eth.getBlockNumber();
     const secondsPerBlock = 15;
@@ -4835,26 +4861,67 @@ export class EthBancorModule
       this.fetchUsdPriceOfBnt();
 
       console.time("FirstPromise");
-      const [
-        contractAddresses,
-        { currentBlock, blockHoursAgo }
-      ] = await Promise.all([
-        this.fetchContractAddresses(networkVariables.contractRegistry),
-        this.blockNumberHoursAgo(24)
-      ]);
 
-      this.pullBntInformation({ latestBlock: String(currentBlock) });
+      const contractAddresses = await replay(
+        async () => {
+          if (!this.useCache) throw new Error("Not using cache")
+          return ({ 
+              BancorConverterRegistry: "0xeB53781A5a0819375d04251A615e3a039f296Ca9",
+              BancorNetwork: "0x2F9EC37d6CcFFf1caB21733BdaDEdE11c823cCB0"
+            }) as RegisteredContracts
+            
+         },
+        async () => this.fetchContractAddresses(networkVariables.contractRegistry),
+        async (local, res, timeTaken) => {
+          const cacheOk = isEqual(local, res)
+          if (cacheOk) {
+            console.log('Cache was okay!', timeTaken, 'ms time saved')
+          } else {
+            console.log('Cache not okay')
+            this.setUseCache(false)
+            this.init()
+          }
+        }
+      )
 
       console.log(contractAddresses, "are contract addresses");
       console.timeEnd("FirstPromise");
 
       console.time("SecondPromise");
-      const [registeredAnchorAddresses, currentBlockInfo] = await Promise.all([
-        this.fetchAnchorAddresses(contractAddresses.BancorConverterRegistry),
-        web3.eth.getBlock(currentBlock)
-      ]);
+      const anchorAndConvertersMatched = await replay(
+        async () => {
+          if (!this.useCache) throw new Error()
+          return hardCodedAnchors as ConverterAndAnchor[]
+        },
+        async () => {
+          const registeredAnchors = await this.fetchAnchorAddresses(contractAddresses.BancorConverterRegistry);
+          const matched = await this.add(registeredAnchors);
+          return matched;
+        },
+        async(local, remote, timeSaved) => {
+          const localAreSame = local.every(localSet => remote.some(remoteSet => isEqual(localSet, remoteSet)));
+          if (localAreSame) {
+            console.log('local anchors are the same as remote', timeSaved, 'ms time saved')
+            const additionals = differenceWith(remote, local, isEqual);
+            if (additionals.length) {
+              console.log('additionals of...', additionals, 'found')
+              this.addPoolsBulk(additionals)
+            }
+          } else {
+            this.setUseCache(false)
+            this.init()
+          }
+        }
+      );
+
 
       (async () => {
+
+
+        const { currentBlock, blockHoursAgo } = await this.blockNumberHoursAgo(24);
+        this.pullBntInformation({ latestBlock: String(currentBlock) });
+        const currentBlockInfo = await web3.eth.getBlock(currentBlock)
+
         const events = await this.pullEvents({
           network: currentNetwork,
           networkContract: contractAddresses.BancorNetwork,
@@ -4870,25 +4937,18 @@ export class EthBancorModule
 
         this.setLiquidityHistory(withDates);
 
-        console.log(
-          withDates.map(x => ({
-            ...x,
-            formatted: moment.unix(x.blockTime).format()
-          })),
-          "have dates"
-        );
       })();
 
       console.timeEnd("SecondPromise");
 
+      const registeredAnchorAddresses = anchorAndConvertersMatched.map(x => x.anchorAddress)
       this.setRegisteredAnchorAddresses(registeredAnchorAddresses);
 
+      
       console.time("ThirdPromise");
       const [
-        anchorAndConvertersMatched,
         bareMinimumAnchorAddresses
       ] = await Promise.all([
-        this.add(registeredAnchorAddresses),
         this.bareMinimumPools({
           params,
           networkContractAddress: contractAddresses.BancorNetwork,
@@ -4998,14 +5058,10 @@ export class EthBancorModule
     }
   }
 
-  @action async addPoolsV1(convertersAndAnchors: ConverterAndAnchor[]) {
-    // do it the way it happened before, adding dynamically and not waiting for the bulk to finish
-  }
-
-  @action async addPools(convertersAndAnchors: ConverterAndAnchor[]) {
-    this.setLoadingPools(true);
-    await this.addPoolsV1(convertersAndAnchors);
-    this.setLoadingPools(false);
+  @action async overwritePools(convertersAndAnchors: ConverterAndAnchor[]) {
+    const withoutPools = this.relaysList.filter(relay => !convertersAndAnchors.some(set => compareString(relay.id, set.anchorAddress)));
+    this.updateRelays(withoutPools);
+    this.addPoolsBulk(convertersAndAnchors);
   }
 
   @action async getPoolsViaSubgraph(): Promise<V2Response> {
