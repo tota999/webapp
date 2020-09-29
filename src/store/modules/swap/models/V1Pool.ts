@@ -11,4 +11,6 @@ export default class V1Pool extends Pool {
       poolToken: this.hasOne(Token, "token_id", "id")
     };
   }
+
+  poolToken!: Token;
 }

@@ -757,7 +757,7 @@ export interface PoolToken {
 }
 
 interface LiqDepth {
-  liqDepth: number | string
+  liqDepth: number | string;
 }
 
 export const assetToDecNumberString = (asset: Asset): string =>
@@ -769,10 +769,11 @@ export const decNumberStringToAsset = (
 ): Asset => new Asset(`${decNumberString} ${symbolName}`);
 
 export const sortByLiqDepth = (a: LiqDepth, b: LiqDepth) => {
-  if (new BigNumber(a.liqDepth).isNaN() && new BigNumber(b.liqDepth).isNaN()) return 0;
+  if (new BigNumber(a.liqDepth).isNaN() && new BigNumber(b.liqDepth).isNaN())
+    return 0;
   if (new BigNumber(a.liqDepth).isNaN()) return 1;
   if (new BigNumber(b.liqDepth).isNaN()) return -1;
-  return new BigNumber(b.liqDepth).minus(a.liqDepth).toNumber()
+  return new BigNumber(b.liqDepth).minus(a.liqDepth).toNumber();
 };
 
 export const zeroAddress: string = "0x0000000000000000000000000000000000000000";
