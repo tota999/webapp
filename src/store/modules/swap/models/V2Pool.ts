@@ -8,8 +8,11 @@ export default class V2Pool extends Pool {
   static fields() {
     return {
       ...super.fields(),
-      poolContainerAddress: this.attr(''),
-      reserves: this.hasMany(V2Reserve, "pool_id"),
+      poolContainerAddress: this.attr(""),
+      reserves: this.hasMany(V2Reserve, "pool_id")
     };
   }
+
+  reserves!: V2Reserve[];
+  poolContainerAddress!: string;
 }
