@@ -1,4 +1,5 @@
 import { Model } from "@vuex-orm/core";
+import BigNumber from "bignumber.js";
 import Reserve from "./Reserve";
 
 export default class Pool extends Model {
@@ -16,6 +17,15 @@ export default class Pool extends Model {
       converterType: this.attr(""),
       version: this.attr("")
     };
+  }
+
+  get liqDepth() {
+    return this.reserves
+      .reduce(
+        (acc, item) => new BigNumber(item.feed.liqDepth).plus(acc),
+        new BigNumber("0")
+      )
+      .toString();
   }
 
   id!: string;

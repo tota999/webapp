@@ -40,6 +40,7 @@ import SubNavigation from "@/components/layout/SubNavigation.vue";
 import MainButton from "@/components/common/Button.vue";
 import YourLiquidity from "@/components/pool/YourLiquidity.vue";
 import ModalPoolSelect from "@/components/modals/ModalSelects/ModalPoolSelect.vue";
+import MyPool from "@/store/modules/swap/models/Pool";
 
 @Component({
   components: {
@@ -54,7 +55,7 @@ export default class PoolHome extends Vue {
   modal = false;
 
   get pools() {
-    return vxm.bancor.relays;
+    return MyPool.query().all();
   }
 
   selectPool(id: string) {

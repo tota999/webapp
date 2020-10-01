@@ -113,6 +113,7 @@ import AlertBlock from "@/components/common/AlertBlock.vue";
 import GrayBorderBlock from "@/components/common/GrayBorderBlock.vue";
 import AdvancedBlockItem from "@/components/common/AdvancedBlockItem.vue";
 import BigNumber from "bignumber.js";
+import MyPool from "@/store/modules/swap/models/Pool";
 
 export interface CreateStep1 {
   token: ViewToken | null;
@@ -265,17 +266,20 @@ export default class CreateHomeNew extends Vue {
     const suggestion = this.tokenIdArray;
     const draftedTokens = this.stepOneProps.length;
     if (suggestion.length !== draftedTokens) return false;
-    const relays = vxm.ethBancor.relays.filter(relay => !relay.v2);
+
+    const relays = MyPool.query()
+      .where("converterType", "2")
+      .with("reserves")
+      .get();
 
     const existingPool = relays.find(relay =>
       suggestion.every(reserve => {
         const matchingReserve = relay.reserves.find(r =>
-          compareString(reserve.tokenId, r.id)
+          compareString(reserve.tokenId, r.token[0].contract)
         );
         return (
           matchingReserve &&
-          Number(matchingReserve.reserveWeight) ==
-            Number(reserve.decReserveWeight)
+          new BigNumber(matchingReserve.decWeight).eq(reserve.decReserveWeight)
         );
       })
     );
