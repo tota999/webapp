@@ -125,7 +125,8 @@ export default class BancorMenu extends Vue {
     const isProd = !isDev && !isStaging;
 
     if (isDev) {
-      this.openUrl(`http://localhost:8080/${service}/data`);
+      this.$router.push({ name: "Data" });
+      // this.openUrl(`http://localhost:8080/${service}/data`);
     } else if (isStaging) {
       this.openUrl(`https://staging.swap.bancor.network/${service}/data`);
     } else if (isProd) {
