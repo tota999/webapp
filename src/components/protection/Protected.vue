@@ -123,6 +123,7 @@ import {
 } from "@/api/helpers";
 import numeral from "numeral";
 import moment from "moment";
+import momentDurationFormatSetup from "moment-duration-format";
 import { ViewProtectedLiquidity } from "@/types/bancor";
 import ProtectedEmpty from "@/components/protection/ProtectedEmpty.vue";
 
@@ -148,8 +149,13 @@ export default class Protected extends Vue {
     if (reachedFullCoverage) {
       return "Full coverage achieved";
     } else {
-      const timeLeft = moment.unix(fullCoverageSeconds).fromNow(true);
-      return `${timeLeft} left until full coverage`;
+      const timeNowUnix = moment().unix();
+      const remainingTime = fullCoverageSeconds - timeNowUnix;
+      const duration = moment
+        .duration(remainingTime, "seconds")
+        // @ts-ignore
+        .format() as string;
+      return `${duration} left until full coverage`;
     }
   }
 
