@@ -19,19 +19,19 @@ export default class TestProgressBar extends Vue {
   @Prop() percentage?: number;
 
   // for testing
-  @Getter('isCountryBanned', {namespace: 'GeneralNewModule'})
+  @Getter('isCountryBanned', {namespace: 'general'})
   isCountryBanned!: boolean;
 
-  @State('darkMode', {namespace: 'GeneralNewModule'})
+  @State('darkMode', {namespace: 'general'})
   darkMode!: boolean;
 
-  @State('countryCode', {namespace: 'GeneralNewModule'})
+  @State('countryCode', {namespace: 'general'})
   countryCode!: string;
 
-  @Mutation('toggleDarkMode', {namespace: 'GeneralNewModule'})
+  @Mutation('toggleDarkMode', {namespace: 'general'})
   toggleDarkMode!: () => void;
 
-  @Action('getUserCountry', {namespace: 'GeneralNewModule'})
+  @Action('getUserCountry', {namespace: 'general'})
   getUserCountry!: () => void;
 
   get percentageValue() {

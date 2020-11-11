@@ -30,7 +30,7 @@ describe("Progress Bar Component", () => {
     },
     store = new Vuex.Store({
       modules: {
-        GeneralNewModule: {
+        general: {
           namespaced: true,
           state,
           actions,
