@@ -9,9 +9,11 @@
 
 <script lang="ts">
 import { Component, Vue, Prop } from "vue-property-decorator";
-import { State, Getter, Mutation, Action } from 'vuex-class';
+import { State, Getter, Mutation, Action, namespace } from 'vuex-class';
 // import { vxm } from "@/store";
 import numeral from "numeral";
+
+const general = namespace("general")
 
 @Component
 export default class TestProgressBar extends Vue {
@@ -19,19 +21,19 @@ export default class TestProgressBar extends Vue {
   @Prop() percentage?: number;
 
   // for testing
-  @Getter('isCountryBanned', {namespace: 'general'})
+  @general.Getter('isCountryBanned')
   isCountryBanned!: boolean;
 
-  @State('darkMode', {namespace: 'general'})
+  @general.State('darkMode')
   darkMode!: boolean;
 
-  @State('countryCode', {namespace: 'general'})
+  @general.State('countryCode')
   countryCode!: string;
 
-  @Mutation('toggleDarkMode', {namespace: 'general'})
+  @general.Mutation('toggleDarkMode')
   toggleDarkMode!: () => void;
 
-  @Action('getUserCountry', {namespace: 'general'})
+  @general.Action('getUserCountry')
   getUserCountry!: () => void;
 
   get percentageValue() {
